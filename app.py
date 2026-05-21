@@ -23,6 +23,7 @@ st.title("Failure Report Analysis")
 
 query_text = st.text_input("Enter description or observation (optional)")
 
+# Streamlit file uploader supports drag and drop by default and file browser selection.
 uploaded_files = st.file_uploader("Upload Image(s)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
 
 if "search_results" not in st.session_state:
@@ -44,41 +45,55 @@ if st.button("Search"):
                 serving_config="default_config",
             )
 
-            image_query = None
-            if uploaded_files:
-                first_file = uploaded_files[0]
-                image_bytes = first_file.read()
-                b64_img = base64.b64encode(image_bytes).decode('utf-8')
-                image_query = discoveryengine.SearchRequest.ImageQuery(image_bytes=b64_img)
+            all_results = {}
 
-            request_kwargs = {
-                "serving_config": serving_config,
-            }
-
-            # Discovery Engine requires a query text string. If we only have an image, we provide an empty string.
-            request_kwargs["query"] = query_text if query_text else ""
-
-            if image_query:
-                request_kwargs["image_query"] = image_query
-
-            # We explicitly ask for snippet to try to get more document text for vertex AI summary
-            content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
-                extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-                    max_extractive_segment_count=1
+            # Since Discovery Engine API SearchRequest only accepts a single `image_query`,
+            # we will iterate through all uploaded images and aggregate the results.
+            # If no images are uploaded, we just run one search with the text query.
+            if not uploaded_files:
+                request_kwargs = {
+                    "serving_config": serving_config,
+                    "query": query_text if query_text else ""
+                }
+                content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+                    extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                        max_extractive_segment_count=1
+                    )
                 )
-            )
-            request_kwargs["content_search_spec"] = content_search_spec
+                request_kwargs["content_search_spec"] = content_search_spec
+                request = discoveryengine.SearchRequest(**request_kwargs)
+                response = client.search(request)
+                for result in response:
+                    doc = result.document
+                    doc_dict = type(doc).to_dict(doc)
+                    all_results[doc_dict.get("name")] = doc_dict
+            else:
+                for uploaded_file in uploaded_files:
+                    image_bytes = uploaded_file.read()
+                    b64_img = base64.b64encode(image_bytes).decode('utf-8')
+                    image_query = discoveryengine.SearchRequest.ImageQuery(image_bytes=b64_img)
 
-            request = discoveryengine.SearchRequest(**request_kwargs)
-            response = client.search(request)
+                    request_kwargs = {
+                        "serving_config": serving_config,
+                        "query": query_text if query_text else "",
+                        "image_query": image_query
+                    }
+                    content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+                        extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                            max_extractive_segment_count=1
+                        )
+                    )
+                    request_kwargs["content_search_spec"] = content_search_spec
+                    request = discoveryengine.SearchRequest(**request_kwargs)
+                    response = client.search(request)
 
-            results = []
-            for result in response:
-                doc = result.document
-                doc_dict = type(doc).to_dict(doc)
-                results.append(doc_dict)
+                    for result in response:
+                        doc = result.document
+                        doc_dict = type(doc).to_dict(doc)
+                        if doc_dict.get("name") not in all_results:
+                            all_results[doc_dict.get("name")] = doc_dict
 
-            st.session_state.search_results = results
+            st.session_state.search_results = list(all_results.values())
             st.session_state.has_searched = True
 
         except Exception as e:
