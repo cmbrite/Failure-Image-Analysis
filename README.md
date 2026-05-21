@@ -2,7 +2,7 @@
 
 AI failure image analysis project
 
-This project provides a Streamlit application designed to search through a Google Cloud Discovery Engine Datastore containing failure reports. It supports multimodal search queries (images and text) and can optionally generate concise AI overviews of specific reports using Vertex AI's Gemini 2.5 Flash Lite model.
+This project provides a PHP web application designed to search through a Google Cloud Discovery Engine Datastore containing failure reports. It supports multimodal search queries (images and text) and can optionally generate concise AI overviews of specific reports using Vertex AI's Gemini 2.5 Flash Lite model.
 
 ## Features
 
@@ -12,78 +12,59 @@ This project provides a Streamlit application designed to search through a Googl
 ## Prerequisites
 
 Before running the application, ensure you have the following configured:
-- Python 3.8+
+- PHP 8.1+
+- Composer
 - A Google Cloud Project (`gemini-chatbot-418317`) with Discovery Engine and Vertex AI enabled.
 - A service account JSON key with permissions to use Vertex AI and Discovery Engine.
 
 ## Installation
 
 1. Clone this repository.
-2. Install the required Python dependencies:
+2. Install the required PHP dependencies using Composer:
 
 ```bash
-pip install -r requirements.txt
+composer install
 ```
 
 ## Configuration
 
-The application authenticates using a Google Cloud Service Account. You can provide this in one of two ways:
+The application authenticates using a Google Cloud Service Account.
 
-### Option 1: Streamlit Secrets (Recommended for local development)
+### Environment Variable or File
 
-1. Create a `.streamlit` folder in the root directory.
-2. Inside `.streamlit`, create a file named `secrets.toml`.
-3. Add your service account details under the `[gcp_service_account]` section. Example:
+You must have a service account JSON file (e.g., `sa.json`). The application looks for it in two ways:
 
-```toml
-[gcp_service_account]
-type = "service_account"
-project_id = "your-project-id"
-private_key_id = "your-private-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-client_email = "your-service-account-email"
-client_id = "your-client-id"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "your-cert-url"
-universe_domain = "googleapis.com"
-```
+1. By setting the `GOOGLE_APPLICATION_CREDENTIALS` environment variable:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/sa.json
+   ```
 
-The application will automatically read these secrets, create a temporary `sa.json` file, and set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable.
-
-### Option 2: Environment Variable
-
-Alternatively, if you are deploying to an environment that natively supports it (or if you already have the file locally), you can directly set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to your service account JSON file before running the app.
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/sa.json
-```
+2. By placing a file named `sa.json` in the root directory of the project. The code will automatically read it and set the environment variable.
 
 ## Usage
 
-Start the Streamlit application:
+Start the local PHP development server:
 
 ```bash
-streamlit run app.py
+php -S localhost:8000
 ```
+
+Open your browser and navigate to `http://localhost:8000/index.php`.
 
 ### How to use the app:
 
 1. **Enter Observation (Optional):** In the "Enter description or observation (optional)" text box, type any context or keywords related to the failure.
-2. **Upload Image(s):** Use the file uploader to provide images of the failure. The application will use the first uploaded image as an `ImageQuery` for the Discovery Engine.
+2. **Upload Image(s):** Use the file uploader to provide images of the failure.
 3. **Search:** Click the "Search" button.
 4. **View Results:** The application will display the most relevant failure reports from the datastore.
 5. **AI Overview:**
    - Once the search results are populated, a dropdown will appear.
    - Select the specific report you are interested in from the dropdown.
-   - Check the "Enable AI Overview for selected report" box.
+   - Click the "Generate AI Overview" button.
    - The application will extract text snippets from the selected document and use Gemini to provide a concise summary incorporating your initial observation.
 
 ## Architecture & Logic
 
-- **Framework:** [Streamlit](https://streamlit.io/) provides the interactive web interface.
-- **Search Engine:** `google.cloud.discoveryengine_v1.SearchServiceClient` queries the unstructured datastore (`fa-reports_1779052870269`).
-  - Search requests combine `query` (text) and `image_query` (base64 encoded image).
-  - An `ExtractiveContentSpec` is used to retrieve text snippets (`extractive_segments`) from the matched documents (like PDFs) to provide context for the AI model.
-- **Generative AI:** `vertexai.generative_models.GenerativeModel` ("gemini-2.5-flash-lite") summarizes the extracted snippets of the *selected* document, specifically guided by the user's input observation.
+- **Frontend:** HTML, CSS, and Vanilla JavaScript (`index.php`) handle the user interface and fetch requests to the backend API.
+- **Backend Search (`search.php`):** Integrates with `Google\Cloud\DiscoveryEngine\V1\Client\SearchServiceClient` to query the unstructured datastore (`fa-reports_1779052870269`). Search requests combine text queries and image queries. Extracts text snippets to provide context.
+- **Backend Overview (`overview.php`):** Integrates with `Google\Cloud\AIPlatform\V1\Client\PredictionServiceClient` ("gemini-2.5-flash-lite") to summarize the extracted snippets of the selected document, specifically guided by the user's input observation.
